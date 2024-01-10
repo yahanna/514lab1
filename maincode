@@ -1,0 +1,155 @@
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Adafruit_MPU6050.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define BUZZER_PIN A0 // Define the pin for the buzzer
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
+
+// Initialize the BME280 sensor
+Adafruit_BME280 bme;
+Adafruit_MPU6050 mpu;
+
+int liftCount = 0; // 计数器
+bool isLifting = false; // 标记是否正在抬升
+bool upped = false;
+float liftThreshold = -15.0; // 设定加速度阈值，需要根据实际情况调整
+float resetThreshold = -10.0;
+
+#define NOTE_E 330
+#define NOTE_E2 659
+#define NOTE_G 392
+#define NOTE_A 440
+#define NOTE_B 494
+#define NOTE_D 294
+#define NOTE_D2 1175
+#define NOTE_C 262
+
+void setup() {
+  Serial.begin(9600);
+  Serial.print("Init!");
+
+  // Start the I2C communication
+  Wire.begin();
+
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+
+  if (!bme.begin(0x76)) {
+    Serial.println("Could not find a valid BME280 sensor, check wiring!");
+    while (1);
+  }
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+
+  display.display();
+  delay(2000); // Pause for 2 seconds
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  pinMode(BUZZER_PIN, OUTPUT);
+}
+
+void playJingleBells() {
+  // Play the first part of "Jingle Bells"
+  tone(BUZZER_PIN, NOTE_E, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_E, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_E, 500);
+  delay(500);
+  tone(BUZZER_PIN, NOTE_E, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_E, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_E, 500);
+  delay(500);
+  tone(BUZZER_PIN, NOTE_E, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_G, 250);
+  delay(250);
+  tone(BUZZER_PIN, NOTE_C, 375);
+  delay(375);
+  tone(BUZZER_PIN, NOTE_D, 125);
+  delay(125);
+  tone(BUZZER_PIN, NOTE_E, 1000);
+  delay(1000);
+
+  // Short pause between the sequences
+  delay(500);
+}
+
+void loop() {
+  display.clearDisplay();
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  if (a.acceleration.x < liftThreshold && !isLifting) {
+    isLifting = true;
+  } else if (a.acceleration.x >= resetThreshold && isLifting) {
+    isLifting = false;
+    if (upped){
+      upped = false;
+      liftCount++;
+    } else{
+      upped = true;
+    }
+  }
+
+  if (liftCount >= 5) {
+    playJingleBells();
+    liftCount = 0; // Reset the count
+  }
+
+  // Read humidity
+  float humidity = bme.readHumidity();
+  float temperature = bme.readTemperature();
+
+  // Display the humidity
+  display.setTextSize(1); 
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.print("Humidity: ");
+  display.print(humidity);
+  display.println(" %");
+  display.print("Temperature: ");
+  display.print(temperature);
+  display.print((char)223);
+  display.println("C");
+
+  // Gyroscope data
+  display.print("Gyro: ");
+  display.print(g.gyro.x);
+  display.print(", ");
+  display.print(g.gyro.y);
+  display.print(", ");
+  display.println(g.gyro.z);
+  display.print("Lift Count: ");
+  display.println(liftCount);
+
+  // Accelerometer data
+  display.print("Acc: ");
+  display.print(a.acceleration.x);
+  display.print(", ");
+  display.print(a.acceleration.y);
+  display.print(", ");
+  display.println(a.acceleration.z);
+
+  // Update the display
+  display.display();
+  delay(100); // Wait for a second before reading again
+}
